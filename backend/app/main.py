@@ -29,6 +29,7 @@ from .api.v1 import (
     persistent_auth,
     dashboard,
     login,
+    properties,
 )
 
 from .monitoring.middleware import PerformanceMonitoringMiddleware
@@ -100,6 +101,14 @@ async def lifespan(app: FastAPI):
         logger.error(f"❌ Supabase connection pool initialization failed: {e}")
         # Continue startup - fallback to direct connections
 
+    # Initialize SQLAlchemy async database pool
+    try:
+        from .core.database_pool import db_pool
+
+        await db_pool.initialize()
+    except Exception as e:
+        logger.error(f"❌ Database pool initialization failed: {e}")
+
     # Initialize Redis connection with timeout
     try:
         await redis_client.initialize()
@@ -127,7 +136,7 @@ async def lifespan(app: FastAPI):
     await async_processor.shutdown()
     logger.info("Async processor shutdown completed")
 
-    # Close connection pool
+    # Close connection pools
     try:
         from .core.supabase_connection_pool import supabase_pool
 
@@ -135,6 +144,13 @@ async def lifespan(app: FastAPI):
         logger.info("✅ Supabase connection pool closed")
     except Exception as e:
         logger.warning(f"⚠️ Error closing connection pool: {e}")
+
+    try:
+        from .core.database_pool import db_pool
+
+        await db_pool.close()
+    except Exception as e:
+        logger.warning(f"⚠️ Error closing database pool: {e}")
 
 
 app = FastAPI(
@@ -190,6 +206,9 @@ app.include_router(bootstrap.router, prefix="/api/v1", tags=["bootstrap"])
 
 # Departments & Permissions
 app.include_router(departments.router, prefix="/api/v1", tags=["departments"])
+
+# Properties
+app.include_router(properties.router, prefix="/api/v1", tags=["properties"])
 
 # Cities (for user access control - used by CityAccessContext)
 app.include_router(cities.router, prefix="/api/v1", tags=["cities"])

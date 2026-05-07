@@ -107,38 +107,39 @@ export class SessionRecovery {
         return session;
       }
       
-      // If no session found, check localStorage directly as a fallback
-      console.log('[SessionRecovery] No session from getSession, checking localStorage directly...');
-      
+      // Supabase-specific localStorage fallback — skip when VITE_SUPABASE_URL is not set
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const storageKey = `sb-${supabaseUrl.split('//')[1].split('.')[0]}-auth-token`;
-      const storedData = localStorage.getItem(storageKey);
-      
-      if (storedData) {
-        try {
-          const parsed = JSON.parse(storedData);
-          
-          if (parsed?.currentSession?.refresh_token) {
-            console.log('[SessionRecovery] Found refresh token in localStorage, attempting to restore...');
-            
-            const { data: { session: restoredSession }, error: restoreError } = 
-              await supabase.auth.setSession({
-                access_token: parsed.currentSession.access_token,
-                refresh_token: parsed.currentSession.refresh_token
-              });
-            
-            if (!restoreError && restoredSession) {
-              console.log('[SessionRecovery] Session restored from localStorage');
-              return restoredSession;
-            } else {
-              console.error('[SessionRecovery] Failed to restore session:', restoreError);
+      if (supabaseUrl) {
+        console.log('[SessionRecovery] No session from getSession, checking localStorage directly...');
+        const storageKey = `sb-${supabaseUrl.split('//')[1].split('.')[0]}-auth-token`;
+        const storedData = localStorage.getItem(storageKey);
+
+        if (storedData) {
+          try {
+            const parsed = JSON.parse(storedData);
+
+            if (parsed?.currentSession?.refresh_token) {
+              console.log('[SessionRecovery] Found refresh token in localStorage, attempting to restore...');
+
+              const { data: { session: restoredSession }, error: restoreError } =
+                await supabase.auth.setSession({
+                  access_token: parsed.currentSession.access_token,
+                  refresh_token: parsed.currentSession.refresh_token
+                });
+
+              if (!restoreError && restoredSession) {
+                console.log('[SessionRecovery] Session restored from localStorage');
+                return restoredSession;
+              } else {
+                console.error('[SessionRecovery] Failed to restore session:', restoreError);
+              }
             }
+          } catch (e) {
+            console.error('[SessionRecovery] Failed to parse stored session:', e);
           }
-        } catch (e) {
-          console.error('[SessionRecovery] Failed to parse stored session:', e);
         }
       }
-      
+
       console.log('[SessionRecovery] No recoverable session found');
       return null;
     } catch (error) {
@@ -171,8 +172,10 @@ export class SessionRecovery {
   clearStoredSession(): void {
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const storageKey = `sb-${supabaseUrl.split('//')[1].split('.')[0]}-auth-token`;
-      localStorage.removeItem(storageKey);
+      if (supabaseUrl) {
+        const storageKey = `sb-${supabaseUrl.split('//')[1].split('.')[0]}-auth-token`;
+        localStorage.removeItem(storageKey);
+      }
       console.log('[SessionRecovery] Stored session cleared');
     } catch (error) {
       console.error('[SessionRecovery] Failed to clear stored session:', error);
