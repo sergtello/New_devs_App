@@ -168,53 +168,35 @@ export class SecureAPIClient {
    * Get tenant ID for cache isolation
    */
   private async getTenantId(): Promise<string | null> {
+    // Try cached tenant ID first for performance
     if (this.cachedTenantId) {
       return this.cachedTenantId;
     }
 
     try {
-      let token = this.cachedToken;
-
-      // If no token is cached yet, read directly from localStorage.
-      // localAuthClient stores the session under 'base360-auth-token'.
-      // This covers the case where request() is called before setAccessToken()
-      // has been invoked by the AuthProvider (e.g. on first render).
-      if (!token) {
-        try {
-          const stored = localStorage.getItem('base360-auth-token');
-          if (stored) {
-            const session = JSON.parse(stored);
-            if (session?.access_token) {
-              token = session.access_token;
-              this.cachedToken = token;
-            }
-          }
-        } catch {
-          // localStorage unavailable or malformed — continue with null token
-        }
-      }
-
+      // Extract tenant ID from JWT token if available
+      const token = this.cachedToken;
       if (token) {
-        let extractedTenantId: string | null = null;
+        let extractedTenantId = null;
 
+        // Handle static local token.
         if (token === "mock-token-123") {
           extractedTenantId = "tenant-a";
-        } else if (token.includes('.') && token.split('.').length === 3) {
+        }
+        // Check if it's a valid JWT
+        else if (token.includes('.') && token.split('.').length === 3) {
           const payload = JSON.parse(atob(token.split('.')[1]));
-          // Check all locations where the backend may embed tenant_id
-          extractedTenantId =
-            payload.app_metadata?.tenant_id ||
-            payload.user_metadata?.tenant_id ||
-            payload.tenant_id ||
-            null;
+          extractedTenantId = payload.user_metadata?.tenant_id || payload.tenant_id;
         }
 
         if (extractedTenantId) {
+          // Validate tenant ID format (should be UUID)
           if (this.isValidTenantId(extractedTenantId)) {
             this.cachedTenantId = extractedTenantId;
             return this.cachedTenantId;
           } else {
             console.error('[SecureAPI] Invalid tenant ID format:', extractedTenantId);
+            // Clear invalid session to force re-authentication
             this.cachedToken = null;
             this.cachedTenantId = null;
           }
@@ -222,11 +204,14 @@ export class SecureAPIClient {
       }
     } catch (error) {
       console.error('[SecureAPI] JWT parsing failed - clearing session:', error);
+      // Clear potentially corrupted session data
       this.cachedToken = null;
       this.cachedTenantId = null;
       this.clearCache();
     }
 
+    // Return null instead of dangerous 'default' fallback
+    // This will disable caching for users without valid tenant IDs
     return null;
   }
 
@@ -259,7 +244,7 @@ export class SecureAPIClient {
    */
   private isValidTenantId(tenantId: string): boolean {
     if (typeof tenantId !== 'string' || tenantId.length === 0) return false;
-    // Accept UUIDs and plain-string IDs (e.g. "tenant-a") used in challenge mode
+    // Accept UUIDs and plain-string IDs
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const plainIdRegex = /^[a-z0-9_-]+$/i;
     return uuidRegex.test(tenantId) || plainIdRegex.test(tenantId);
@@ -1088,9 +1073,6 @@ export class SecureAPIClient {
         if ('items' in result) {
           console.log('[SecureAPI.getProperties] Found items array with', result.items?.length || 0, 'properties');
           return { data: result.items || [], total: result.total || 0 };
-        } else if ('properties' in result) {
-          console.log('[SecureAPI.getProperties] Found properties array with', result.properties?.length || 0, 'properties');
-          return { data: result.properties || [], total: result.total || 0 };
         } else if ('data' in result) {
           console.log('[SecureAPI.getProperties] Found data array with', result.data?.length || 0, 'properties');
           return result; // Already in correct format
@@ -1201,7 +1183,7 @@ export class SecureAPIClient {
     });
   }
 
-  // Alias for compatibility  
+  // Alias for compatibility
   async deleteAppliance(propertyId: string, applianceId: string) {
     return this.deletePropertyAppliance(propertyId, applianceId);
   }

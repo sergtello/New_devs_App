@@ -19,7 +19,10 @@ interface AuthSession {
 }
 
 interface AuthResponse {
-  data: { user: AuthUser | null; session: AuthSession | null };
+  data: {
+    user: AuthUser | null;
+    session: AuthSession | null;
+  };
   error: Error | null;
 }
 
@@ -141,17 +144,29 @@ class LocalAuthClient {
     }
   }
 
-  getTokenSync(): string | null {
-    return this.session?.access_token ?? null;
-  }
-
   async getSession(): Promise<{ data: { session: AuthSession | null } }> {
-    // Return the in-memory session immediately without a network round-trip.
-    // The real Supabase SDK behaves the same way — it returns the cached session
-    // and lets individual API calls surface 401s when the token is actually expired.
-    // Validating here caused AuthContext.initAuth() to hang whenever the backend
-    // was slow, keeping isLoading=true indefinitely and preventing route rendering.
-    return { data: { session: this.session } };
+    // Check if current session is still valid
+    if (this.session?.access_token) {
+      try {
+        // Verify token is still valid by calling a protected endpoint
+        const response = await fetch(`${this.getApiUrl()}/api/v1/auth/me`, {
+          headers: {
+            'Authorization': `Bearer ${this.session.access_token}`,
+          },
+        });
+        if (response.ok) {
+          return { data: { session: this.session } };
+        } else {
+          // Session invalid, clear it
+          this.saveSession(null);
+        }
+      } catch (error) {
+        console.warn('[LocalAuth] Session validation failed:', error);
+        this.saveSession(null);
+      }
+    }
+
+    return { data: { session: null } };
   }
 
   async getUser(token?: string): Promise<{ user: AuthUser | null }> {

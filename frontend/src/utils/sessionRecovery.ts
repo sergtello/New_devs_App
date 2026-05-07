@@ -70,31 +70,31 @@ export class SessionRecovery {
   }
   
   private async performRecovery(): Promise<Session | null> {
-    
+
     try {
       console.log('[SessionRecovery] Attempting to recover session from storage...');
-      
+
       // First, check if Supabase can get the session from storage
       const { data: { session }, error } = await supabase.auth.getSession();
-      
+
       if (error) {
         console.error('[SessionRecovery] Error getting session:', error);
         return null;
       }
-      
+
       if (session) {
         console.log('[SessionRecovery] Session recovered successfully');
-        
+
         // Verify the session is valid
         const { data: { user }, error: userError } = await supabase.auth.getUser(session.access_token);
-        
+
         if (userError || !user) {
           console.log('[SessionRecovery] Session invalid, attempting refresh...');
-          
+
           // Try to refresh the session
-          const { data: { session: refreshedSession }, error: refreshError } = 
+          const { data: { session: refreshedSession }, error: refreshError } =
             await supabase.auth.refreshSession();
-          
+
           if (!refreshError && refreshedSession) {
             console.log('[SessionRecovery] Session refreshed successfully');
             return refreshedSession;
@@ -103,14 +103,15 @@ export class SessionRecovery {
             return null;
           }
         }
-        
+
         return session;
       }
-      
-      // Supabase-specific localStorage fallback — skip when VITE_SUPABASE_URL is not set
+
+      // If no session found, check localStorage directly as a fallback
+      console.log('[SessionRecovery] No session from getSession, checking localStorage directly...');
+
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      if (supabaseUrl) {
-        console.log('[SessionRecovery] No session from getSession, checking localStorage directly...');
+      if(supabaseUrl) {
         const storageKey = `sb-${supabaseUrl.split('//')[1].split('.')[0]}-auth-token`;
         const storedData = localStorage.getItem(storageKey);
 
@@ -121,11 +122,11 @@ export class SessionRecovery {
             if (parsed?.currentSession?.refresh_token) {
               console.log('[SessionRecovery] Found refresh token in localStorage, attempting to restore...');
 
-              const { data: { session: restoredSession }, error: restoreError } =
-                await supabase.auth.setSession({
-                  access_token: parsed.currentSession.access_token,
-                  refresh_token: parsed.currentSession.refresh_token
-                });
+              const {data: {session: restoredSession}, error: restoreError} =
+                  await supabase.auth.setSession({
+                    access_token: parsed.currentSession.access_token,
+                    refresh_token: parsed.currentSession.refresh_token
+                  });
 
               if (!restoreError && restoredSession) {
                 console.log('[SessionRecovery] Session restored from localStorage');
@@ -139,7 +140,6 @@ export class SessionRecovery {
           }
         }
       }
-
       console.log('[SessionRecovery] No recoverable session found');
       return null;
     } catch (error) {
@@ -147,32 +147,32 @@ export class SessionRecovery {
       return null;
     }
   }
-  
+
   /**
    * Ensures a session is properly persisted to localStorage
    */
   async persistSession(session: Session): Promise<void> {
     try {
       console.log('[SessionRecovery] Persisting session to storage...');
-      
+
       await supabase.auth.setSession({
         access_token: session.access_token,
         refresh_token: session.refresh_token
       });
-      
+
       console.log('[SessionRecovery] Session persisted successfully');
     } catch (error) {
       console.error('[SessionRecovery] Failed to persist session:', error);
     }
   }
-  
+
   /**
    * Clears any stored session data
    */
   clearStoredSession(): void {
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      if (supabaseUrl) {
+      if(supabaseUrl) {
         const storageKey = `sb-${supabaseUrl.split('//')[1].split('.')[0]}-auth-token`;
         localStorage.removeItem(storageKey);
       }

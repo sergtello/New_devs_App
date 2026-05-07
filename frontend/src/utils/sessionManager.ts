@@ -653,6 +653,7 @@ class SessionManager {
           payload.tenant_id ||
           '';
       } else if (session.access_token === "mock-token-123") {
+        // Handle static local token.
         tenant_id = "tenant-a";
       }
     } catch (error) {
